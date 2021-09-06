@@ -1,0 +1,148 @@
+library(shiny)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(sp)
+
+getwd()
+
+
+
+ui <- fluidPage(
+  shinythemes::themeSelector(),
+  sidebarPanel(
+
+  ),
+  mainPanel(
+    tabsetPanel(
+      tabPanel("PROGRAMACIÓN")
+    )
+  ),
+  titlePanel("Tarea 4 by Vanessa Jazmín Nina More(vanimore)"), style="color:green",
+  sidebarLayout(
+    sidebarPanel(
+      fileInput("file1", "Ingresar CSV Aqui",
+                multiple = FALSE,
+                accept = c("text/csv","text/comma-separated-values,text/plain",".csv")
+      ),
+      tags$hr(),
+      h5(helpText("Seleccione los parametros:")),
+      checkboxInput(inputId = 'header', 'Header', T),
+      checkboxInput(inputId = "stringAsFactors", "stringAsFactors", T),
+      br(),
+      radioButtons("sep", "Separador",
+                   choices = c(Coma = ",",
+                               puntoyComa = ";",
+                               Tab = "\t",
+                               espacio=''),
+                   selected = ","),
+      radioButtons("quote", "Cita",
+                   choices = c(Ninguna = "",
+                               "cita doble" = '"',
+                               "cita simple" = "'"),
+                   selected = '"'),
+      
+      
+    
+        
+      
+      #radioButtons("disp", "Display",choices = c(Head = "head",All = "all"),selected = "head")
+    ),
+    
+    
+    mainPanel(uiOutput("todo"))
+  )
+)
+
+server <- function(input,output){
+  data <- reactive({
+    file <- input$file1
+    if(is.null(file)){return()} 
+    read.table(file=file$datapath,
+               sep=input$sep,
+               header = input$header,
+               stringsAsFactors = input$stringAsFactors)
+  })
+  output$filedf <- renderTable({
+    if(is.null(data())){return ()}
+    input$file1
+  })
+  output$sum <- renderTable({
+    if(is.null(data())){return ()}
+    summary(data())
+  })
+  output$table <- renderTable({
+    if(is.null(data())){return ()}
+    data()
+  })
+  
+  
+  
+  output$plot <- renderPlot({
+    df <- read.csv(input$file1$datapath,
+                   header = input$header,
+                   sep = input$sep,
+                   quote = input$quote)
+    sf <- st_as_sf(df,coords = c("LONEST", "LATEST"),
+                 crs= "+proj=longlat +datum=WGS84 +ellps=WGS84 +towgs84=0,0,0")
+    ggplot(data = sf) +
+      geom_sf(fill = "greenyellow", color = "orange")
+    
+   
+   #if(is.null(data())){return ()}
+  })
+  #
+  
+  output$map<- renderLeaflet({
+    df <- read.csv(input$file1$datapath,
+                   header = input$header,
+                   sep = input$sep,
+                   quote = input$quote)
+    mapa<-leaflet(df) %>%addProviderTiles("Stamen.TonerLite",group = "Toner") %>%
+      addProviderTiles("HikeBike", group = "Bike") %>% 
+      addProviderTiles("Esri", group = "Esri") %>%
+      addProviderTiles("Stamen.Watercolor", group="Acuarela") %>%
+      addLayersControl(overlayGroups = c("capapuntos"),baseGroups = c("Toner", "Bike", "Esri","Acuarela")) %>% 
+      addCircleMarkers(color = "purple",radius = 5, lat = df$LATEST, lng = df$LONEST)%>%
+      addTiles()
+  })
+  
+  
+  output$ESTACIONES <- renderPrint({ input$data })
+  output$data<- renderPlot({
+    df<- read.csv(input$file1$datapath,
+                    header = input$header,
+                    sep = input$sep,
+                    quote = input$quote)
+    data2<-df %>% dplyr::select(-(LONEST:ELEEST))
+    
+    data3<-data.frame(t(data2[-1]))
+    colnames(data3) <- data2[, 1]
+    data3 <- mutate(data3, meses=month.name)
+
+    ggplot(data3, aes(meses, NAUTA, color=NAUTA)) +
+      geom_point()+
+      labs(y="NAUTA", x = "meses")+
+      ggtitle("Precipitacion promedio por estacion")+
+      scale_color_gradient(low="blue", high="red")
+  })
+    
+  output$todo <- renderUI({
+    if(is.null(data()))
+      h5("desarrollado con", tags$img(src='RStudio-Ball.png', heigth=200, width=200))
+    else
+      tabsetPanel(tabPanel("inicio", tableOutput("filedf")),
+                  tabPanel("Datos", tableOutput("table")),
+                  tabPanel("resumen", tableOutput("sum")),
+                  tabPanel("mapita con leaflet", leafletOutput("map")),
+                  tabPanel("objeto con sf", plotOutput("plot")),
+                  tabPanel("grafico estadistico", plotOutput("data"))
+      )
+  })
+  
+}
+
+
+
+# Run the application 
+shinyApp(ui = ui, server = server)
